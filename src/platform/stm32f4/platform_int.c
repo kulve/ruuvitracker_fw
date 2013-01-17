@@ -8,6 +8,7 @@
 
 // Platform-specific headers
 #include "stm32f4xx.h"
+#include "sdcard.h"
 
 #ifndef VTMR_TIMER_ID
 #define VTMR_TIMER_ID         ( -1 )
@@ -43,6 +44,29 @@ void UART4_IRQHandler()
 void UART5_IRQHandler()
 {
   all_usart_irqhandler( 4 );
+}
+
+/**
+  * @brief  This function handles SDIO global interrupt request.
+  * @param  None
+  * @retval None
+  */
+void SDIO_IRQHandler(void)
+{
+  /* Process All SDIO Interrupt Sources */
+  SD_ProcessIRQSrc();
+}
+
+/**
+  * @brief  This function handles DMA2 Stream3 or DMA2 Stream6 global interrupts
+  *         requests.
+  * @param  None
+  * @retval None
+  */
+void SD_SDIO_DMA_IRQHANDLER(void)
+{
+  /* Process DMA2 Stream3 or DMA2 Stream6 Interrupt Sources */
+  SD_ProcessDMAIRQ();
 }
 
 // ****************************************************************************

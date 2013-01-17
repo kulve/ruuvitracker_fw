@@ -4,9 +4,11 @@
 
 // This file was modified from a sample available from the FatFs
 // web site by Jesus Alvarez & James Snyder for eLua.
- 
+
 #include "platform_conf.h"
-#if defined( BUILD_MMCFS ) && !defined( ELUA_SIMULATOR )
+
+
+#if defined( BUILD_MMCFS ) && !defined( ELUA_SIMULATOR ) && !defined( MMCFS_SDIO_STM32 )
 #include "platform.h"
 #include "diskio.h"
 

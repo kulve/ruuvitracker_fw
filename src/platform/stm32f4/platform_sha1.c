@@ -112,6 +112,7 @@ static int sha1_hmac( lua_State *L )
         return 1;
 }
 
+
 #define MIN_OPT_LEVEL 2
 #include "lrodefs.h"  
 

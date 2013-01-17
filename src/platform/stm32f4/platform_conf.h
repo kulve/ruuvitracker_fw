@@ -16,7 +16,7 @@
 #define BUILD_XMODEM
 #define BUILD_SHELL
 #define BUILD_ROMFS
-//#define BUILD_MMCFS
+#define BUILD_MMCFS
 #define BUILD_TERM
 //#define BUILD_UIP
 //#define BUILD_DHCPC
@@ -30,6 +30,8 @@
 #define BUILD_C_INT_HANDLERS
 #define BUILD_LUA_INT_HANDLERS
 //#define ENABLE_ENC
+
+#define MMCFS_SDIO_STM32
 
 #define PLATFORM_HAS_SYSTIMER
 
@@ -49,13 +51,13 @@
 
 // Number of resources (0 if not available/not implemented)
 #define NUM_PIO               3
-#define NUM_SPI               3
+#define NUM_SPI               0
 #define NUM_UART              3
 #define NUM_TIMER             12
 #define NUM_PHYS_TIMER        12
-#define NUM_PWM               4
-#define NUM_ADC               16
-#define NUM_CAN               1
+#define NUM_PWM               0
+#define NUM_ADC               0
+#define NUM_CAN               0
 #define NUM_I2C               1
 
 //#ifdef FORSTM3210E_EVAL
@@ -115,7 +117,7 @@ extern int luaopen_sha1( lua_State *L );
   LCDLINE\
   _ROM( AUXLIB_ELUA, luaopen_elua, elua_map )\
   _ROM( LUA_MATHLIBNAME, luaopen_math, math_map )\
-  _ROM( "sha1", luaopen_sha1, sha1_map )
+  _ROM( "stm32", luaopen_platform, platform_map )
   PLATLINE
 
 // *****************************************************************************

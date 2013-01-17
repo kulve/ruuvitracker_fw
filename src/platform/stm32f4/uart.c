@@ -85,19 +85,6 @@ void uarts_init()
 //  RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
 //  RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART5, ENABLE);
 //  RCC_APB2PeriphClockCmd(RCC_APB2Periph_USART6, ENABLE);
-
-
-#if defined( ELUA_BOARD_RUUVIA )
-  /* use Red led (PC_15) to display errors */
-  RCC_AHB1PeriphClockCmd(RCC_AHB1Periph_GPIOC, ENABLE);
-  GPIO_InitTypeDef  GPIO_InitStructure;
-  GPIO_InitStructure.GPIO_Pin = GPIO_Pin_15;
-  GPIO_InitStructure.GPIO_Mode = GPIO_Mode_OUT;
-  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-  GPIO_InitStructure.GPIO_Speed = GPIO_Speed_100MHz;
-  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
-  GPIO_Init(GPIOC, &GPIO_InitStructure);
-#endif
 }
 
 u32 platform_uart_setup( unsigned id, u32 baud, int databits, int parity, int stopbits )
@@ -242,3 +229,42 @@ int platform_s_uart_set_flow_control( unsigned id, int type )
   usart->CR3 |= temp;
   return PLATFORM_OK;
 }
+
+
+static void send_str(u8 *s)
+{
+    while(*s) {
+	platform_s_uart_send(0, *s);
+	s++;
+    }
+}
+static void send_int(u32 i)
+{
+    u8 buff[20];
+    u8 *p = &buff[19];
+    *p-- = 0;
+    while(i) {
+	*p-- = (u8)((i%10) + '0');
+	i/=10;
+    }
+    *p = '0';
+    send_str(p);
+}
+
+void assert_failed(u8* file, u32 line)
+{ 
+    u8 *s1 = "\r\nassert_failed(): file ";
+    u8 *s2 = " line ";
+    u8 *s3 ="\n\n";
+    uarts_init();
+    platform_uart_setup(0,115200, 8, PLATFORM_UART_PARITY_NONE, PLATFORM_UART_STOPBITS_1 );
+    send_str(s1);
+    send_str(file);
+    send_str(s2);
+    send_int(line);
+    send_str(s3);
+//  printf( "\r\nassert_failed(). file: %s, line: %ld\r\n", file, line );
+    while(1)
+	;;
+} 
+

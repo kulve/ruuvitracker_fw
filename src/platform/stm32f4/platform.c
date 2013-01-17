@@ -1,5 +1,9 @@
 // Platform-dependent functions
 
+#include "lua.h"
+#include "lualib.h"
+#include "lauxlib.h"
+#include "lrotable.h"
 #include "platform.h"
 #include "type.h"
 #include "devman.h"
@@ -28,7 +32,7 @@
 // Clock data
 // IMPORTANT: if you change these, make sure to modify RCC_Configuration() too!
 /* PLL_VCO = (HSE_VALUE or HSI_VALUE / PLL_M) * PLL_N */
-#define PLL_M      8
+#define PLL_M      12
 #define PLL_N      336
 
 /* SYSCLK = PLL_VCO / PLL_P */
@@ -60,7 +64,7 @@ static void NVIC_Configuration(void);
 
 static void timers_init();
 static void pwms_init();
-static void uarts_init();
+extern void uarts_init();
 static void spis_init();
 static void pios_init();
 #ifdef BUILD_ADC
@@ -331,9 +335,9 @@ static GPIO_TypeDef *const spi_gpio_port[] = { GPIOA, GPIOB, GPIOC };
 static void spis_init()
 {
   // Enable Clocks
-  RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE);
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI2, ENABLE);
-  RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI3, ENABLE);
+  /* RCC_APB2PeriphClockCmd(RCC_APB2Periph_SPI1, ENABLE); */
+  /* RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI2, ENABLE); */
+  /* RCC_APB1PeriphClockCmd(RCC_APB1Periph_SPI3, ENABLE); */
 }
 
 #define SPI_GET_BASE_CLK( id ) ( ( id ) == 0 ? ( HCLK / PCLK2_DIV ) : ( HCLK / PCLK1_DIV ) )
@@ -852,7 +856,7 @@ static const u8 pwm_gpio_pins_source[] = { GPIO_PinSource12, GPIO_PinSource13, G
 
 static void pwms_init()
 {
-  RCC_APB2PeriphClockCmd( RCC_APB1Periph_TIM4, ENABLE );
+//  RCC_APB2PeriphClockCmd( RCC_APB1Periph_TIM4, ENABLE );
   //
 }
 
@@ -1330,16 +1334,22 @@ int platform_adc_start_sequence( )
 // ****************************************************************************
 // Platform specific modules go here
 
-#ifdef ENABLE_ENC
+
+static int hello(lua_State *L)
+{
+  printf("Hello World\n");
+  return 0;
+}
 
 #define MIN_OPT_LEVEL 2
 #include "lrodefs.h"
-extern const LUA_REG_TYPE enc_map[];
+extern const LUA_REG_TYPE sha1_map[];
 
 const LUA_REG_TYPE platform_map[] =
 {
 #if LUA_OPTIMIZE_MEMORY > 0
-  { LSTRKEY( "enc" ), LROVAL( enc_map ) },
+  { LSTRKEY( "sha1" ), LROVAL( sha1_map ) },
+  { LSTRKEY("hello"), LFUNCVAL(hello) },
 #endif
   { LNILKEY, LNILVAL }
 };
@@ -1349,22 +1359,6 @@ LUALIB_API int luaopen_platform( lua_State *L )
 #if LUA_OPTIMIZE_MEMORY > 0
   return 0;
 #else // #if LUA_OPTIMIZE_MEMORY > 0
-  luaL_register( L, PS_LIB_TABLE_NAME, platform_map );
-
-  // Setup the new tables inside platform table
-  lua_newtable( L );
-  luaL_register( L, NULL, enc_map );
-  lua_setfield( L, -2, "enc" );
-
-  return 1;
+#error "STM32 does not work on LUA_OPTIMIZE_MEMORY==0"
 #endif // #if LUA_OPTIMIZE_MEMORY > 0
 }
-
-#else // #ifdef ENABLE_ENC
-
-LUALIB_API int luaopen_platform( lua_State *L )
-{
-  return 0;
-}
-
-#endif // #ifdef ENABLE_ENC
