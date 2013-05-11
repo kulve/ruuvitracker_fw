@@ -3,13 +3,21 @@
 #include "platform_conf.h"
 #include "elua_int.h"
 #include "common.h"
+#include "delay.h"
 
 // Platform specific includes
 #include "stm32f4xx_conf.h"
+#include "usbd_cdc_vcp.h"
+#include "ringbuff.h"
+#include "gsm.h"
+#include "gps.h"
+#include <delay.h>
+
+//Prototypes
+void usart_received(int id, u8 c);
 
 // ****************************************************************************
 // UART
-// TODO: Support timeouts.
 
 // All possible STM32 uarts defs
 USART_TypeDef *const stm32_usart[] =          { USART1, USART2, USART3, UART4, UART5, USART6};
@@ -28,20 +36,30 @@ const u8 stm32_usart_AF[] =       { GPIO_AF_USART1, GPIO_AF_USART2, GPIO_AF_USAR
   static const u8 usart_gpio_rx_pin_source[] = { GPIO_PinSource10, GPIO_PinSource3, GPIO_PinSource11, GPIO_PinSource11, GPIO_PinSource2 };
   static const u16 usart_gpio_tx_pin[] = { GPIO_Pin_9, GPIO_Pin_2, GPIO_Pin_10, GPIO_Pin_10, GPIO_Pin_12 };
   static const u8 usart_gpio_tx_pin_source[] = { GPIO_PinSource9, GPIO_PinSource2, GPIO_PinSource10, GPIO_PinSource10, GPIO_PinSource12 };
+  static GPIO_TypeDef *const usart_gpio_hwflow_port[] = { GPIOA, GPIOA, GPIOB };
+  static const u16 usart_gpio_cts_pin[] = { GPIO_Pin_11, GPIO_Pin_0, GPIO_Pin_13 };
+  static const u8 usart_gpio_cts_pin_source[] = { GPIO_PinSource11, GPIO_PinSource0, GPIO_PinSource13 };
+  static const u16 usart_gpio_rts_pin[] = { GPIO_Pin_12, GPIO_Pin_1, GPIO_Pin_14 };
+  static const u8 usart_gpio_rts_pin_source[] = { GPIO_PinSource12, GPIO_PinSource1, GPIO_PinSource14 };
+#elif defined( ELUA_BOARD_RUUVIB1 )
+  static GPIO_TypeDef *const usart_gpio_rx_port[] = { GPIOB, GPIOD, GPIOD, GPIOC, GPIOD };
+  static GPIO_TypeDef *const usart_gpio_tx_port[] = { GPIOB, GPIOD, GPIOD, GPIOC, GPIOD };
+  static const u16 usart_gpio_rx_pin[] = { GPIO_Pin_7, GPIO_Pin_5, GPIO_Pin_8, GPIO_Pin_11, GPIO_Pin_2 };
+  static const u8 usart_gpio_rx_pin_source[] = { GPIO_PinSource7, GPIO_PinSource5, GPIO_PinSource8, GPIO_PinSource11, GPIO_PinSource2 };
+  static const u16 usart_gpio_tx_pin[] = { GPIO_Pin_6, GPIO_Pin_6, GPIO_Pin_9, GPIO_Pin_10, GPIO_Pin_12 };
+  static const u8 usart_gpio_tx_pin_source[] = { GPIO_PinSource6, GPIO_PinSource6, GPIO_PinSource9, GPIO_PinSource10, GPIO_PinSource12 };
+  static GPIO_TypeDef *const usart_gpio_hwflow_port[] = { GPIOA, GPIOD, GPIOB };
+  static const u16 usart_gpio_cts_pin[] = { GPIO_Pin_11, GPIO_Pin_3, GPIO_Pin_13 };
+  static const u8 usart_gpio_cts_pin_source[] = { GPIO_PinSource11, GPIO_PinSource3, GPIO_PinSource13 };
+  static const u16 usart_gpio_rts_pin[] = { GPIO_Pin_12, GPIO_Pin_4, GPIO_Pin_14 };
+  static const u8 usart_gpio_rts_pin_source[] = { GPIO_PinSource12, GPIO_PinSource4, GPIO_PinSource14 };
 #else
-  static GPIO_TypeDef *const usart_gpio_rx_port[] = { GPIOB, GPIOA, GPIOC, GPIOC, GPIOD };
-  static GPIO_TypeDef *const usart_gpio_tx_port[] = { GPIOB, GPIOA, GPIOC, GPIOC, GPIOD };
-  static const u16 usart_gpio_rx_pin[] = { GPIO_Pin_7, GPIO_Pin_3, GPIO_Pin_11, GPIO_Pin_11, GPIO_Pin_2 };
-  static const u8 usart_gpio_rx_pin_source[] = { GPIO_PinSource7, GPIO_PinSource3, GPIO_PinSource11, GPIO_PinSource11, GPIO_PinSource2 };
-  static const u16 usart_gpio_tx_pin[] = { GPIO_Pin_6, GPIO_Pin_2, GPIO_Pin_10, GPIO_Pin_10, GPIO_Pin_12 };
-  static const u8 usart_gpio_tx_pin_source[] = { GPIO_PinSource6, GPIO_PinSource2, GPIO_PinSource10, GPIO_PinSource10, GPIO_PinSource12 };
+#error "Define UART pins/ports for this board in uart.c"
 #endif
 
-static GPIO_TypeDef *const usart_gpio_hwflow_port[] = { GPIOA, GPIOA, GPIOB };
-static const u16 usart_gpio_cts_pin[] = { GPIO_Pin_11, GPIO_Pin_0, GPIO_Pin_13 };
-static const u8 usart_gpio_cts_pin_source[] = { GPIO_PinSource11, GPIO_PinSource0, GPIO_PinSource13 };
-static const u16 usart_gpio_rts_pin[] = { GPIO_Pin_12, GPIO_Pin_1, GPIO_Pin_14 };
-static const u8 usart_gpio_rts_pin_source[] = { GPIO_PinSource12, GPIO_PinSource1, GPIO_PinSource14 };
+#define BUFF_SIZE	1024
+
+struct rbuff *rbuff[NUM_UART];
 
 static void usart_init(u32 id, USART_InitTypeDef * initVals)
 {
@@ -70,6 +88,9 @@ static void usart_init(u32 id, USART_InitTypeDef * initVals)
 
   /* Configure USART */
   USART_Init(stm32_usart[id], initVals);
+
+  /* create buffer */
+  rbuff[id] = rbuff_new(BUFF_SIZE);
 
   /* Enable USART */
   USART_Cmd(stm32_usart[id], ENABLE);
@@ -149,48 +170,51 @@ void platform_s_uart_send( unsigned id, u8 data )
   {
   }
   USART_SendData(stm32_usart[id], data);
+  if (id == 0) {
+    VCP_SendChar(data);
+  }
 }
 
 /*** Receive functions */
 
-#define BUFF_SIZE	256
-struct rbuff {
-	u8 data[BUFF_SIZE];
-	volatile int top;
-	volatile int bottom;
-} rbuff[NUM_UART];
-
 int platform_s_uart_recv( unsigned id, timer_data_type timeout )
 {
-  int ret;
-  struct rbuff *q= &rbuff[id];
+  struct rbuff *q= rbuff[id];
   if( timeout != 0 )  {
-  	while(q->top == q->bottom)
-  		;;
+    while(rbuff_is_empty(q))
+      delay_ms(1);
   }
-  if(q->top == q->bottom)
+  if(rbuff_is_empty(q))
   	return -1;
-  ret = q->data[q->bottom++];
-  q->bottom%=BUFF_SIZE; //Wrap around
-  return ret;
+  return rbuff_pop(q);
 }
 
-//TODO: Buffer overrun errors not handled
+/* Push byte to the receiving buffer */
+/* TODO: Buffer overrun errors not handled */
+void usart_received(int id, u8 c)
+{
+  rbuff_push(rbuff[id], c);
+}
+
+/* Interrupt handler. Called from USART RX interrupt */
 void all_usart_irqhandler( int id )
 {
-	struct rbuff *q= &rbuff[id];
-	q->data[q->top] = USART_ReceiveData(stm32_usart[id]);
-	q->top++;
-	q->top%=BUFF_SIZE;
-	if(q->top==q->bottom) { //BUFFER OVERRUN
-#if defined( ELUA_BOARD_RUUVIA )	
-	  //		GPIO_SetBits(GPIOC, GPIO_Pin_15);
+  u8 c = USART_ReceiveData(stm32_usart[id]);
+  usart_received(id, c);
+
+#ifdef BUILD_GSM
+  if ( (id == GSM_UART_ID) && (c == '\n')) {
+    elua_add_c_hook(gsm_line_received);
+  }
 #endif
-	}
+#ifdef BUILD_GPS
+  if ( (id == GPS_UART_ID) && (c == '\n')) {
+    elua_add_c_hook(gps_line_received);
+  }
+#endif
 }
 
 
-/*** */
 
 int platform_s_uart_set_flow_control( unsigned id, int type )
 {

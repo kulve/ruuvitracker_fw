@@ -5,14 +5,111 @@
 #include "platform_conf.h"
 #include "elua_int.h"
 #include "common.h"
+#include <stdio.h>
 
 // Platform-specific headers
 #include "stm32f4xx.h"
 #include "sdcard.h"
+#include "usb_core.h"
+#include "usbd_core.h"
+#include "usbd_cdc_core.h"
 
 #ifndef VTMR_TIMER_ID
 #define VTMR_TIMER_ID         ( -1 )
 #endif
+
+/******************************************************************************/
+/*             Cortex-M Processor Exceptions Handlers                         */
+/******************************************************************************/
+
+/**
+  * @brief   This function handles NMI exception.
+  * @param  None
+  * @retval None
+  */
+void NMI_Handler(void)
+{
+}
+
+/**
+  * @brief  This function handles Hard Fault exception.
+  * @param  None
+  * @retval None
+  */
+void HardFault_Handler(void)
+{
+  /* Go to infinite loop when Hard Fault exception occurs */
+  while (1)
+  {
+  }
+}
+
+/**
+  * @brief  This function handles Memory Manage exception.
+  * @param  None
+  * @retval None
+  */
+void MemManage_Handler(void)
+{
+  /* Go to infinite loop when Memory Manage exception occurs */
+  while (1)
+  {
+  }
+}
+
+/**
+  * @brief  This function handles Bus Fault exception.
+  * @param  None
+  * @retval None
+  */
+void BusFault_Handler(void)
+{
+  /* Go to infinite loop when Bus Fault exception occurs */
+  while (1)
+  {
+  }
+}
+
+/**
+  * @brief  This function handles Usage Fault exception.
+  * @param  None
+  * @retval None
+  */
+void UsageFault_Handler(void)
+{
+  /* Go to infinite loop when Usage Fault exception occurs */
+  while (1)
+  {
+  }
+}
+
+/**
+  * @brief  This function handles SVCall exception.
+  * @param  None
+  * @retval None
+  */
+void SVC_Handler(void)
+{
+}
+
+/**
+  * @brief  This function handles Debug Monitor exception.
+  * @param  None
+  * @retval None
+  */
+void DebugMon_Handler(void)
+{
+}
+
+/**
+  * @brief  This function handles PendSVC exception.
+  * @param  None
+  * @retval None
+  */
+void PendSV_Handler(void)
+{
+}
+
 
 // ****************************************************************************
 // Interrupt handlers
@@ -89,6 +186,11 @@ static int exint_gpio_to_src( pio_type piodata )
 static void all_exti_irqhandler( int line )
 {
   u16 v, port, pin;
+
+  /* Reset device on User_button */
+  if (10 == line) {
+    NVIC_SystemReset();
+  }
   
   v = exti_line_to_gpio( line );
   port = PLATFORM_IO_GET_PORT( v );
@@ -213,6 +315,12 @@ void TIM5_IRQHandler(void)
 void TIM8_CC_IRQHandler(void)
 {
   tmr_int_handler( 7 );
+}
+
+void TIM8_TRG_COM_TIM14_IRQHandler(void)
+{
+  TIM_ClearITPendingBit(TIM14, TIM_IT_Update);
+  elua_run_c_hooks();
 }
 
 // ****************************************************************************
@@ -394,14 +502,16 @@ static const u8 timer_irq_table[] = { TIM1_CC_IRQn, TIM2_IRQn, TIM3_IRQn, TIM4_I
 static const u8 timer_irq_table[] = { TIM1_CC_IRQn, TIM2_IRQn, TIM3_IRQn, TIM4_IRQn, TIM5_IRQn };
 #endif
 
+extern u32 platform_timer_set_clock( unsigned id, u32 clock );
+
 void platform_int_init()
 {
   NVIC_InitTypeDef nvic_init_structure;
   unsigned i;
   
   // Enable all USART interrupts in the NVIC
-  nvic_init_structure.NVIC_IRQChannelPreemptionPriority = 0;
-  nvic_init_structure.NVIC_IRQChannelSubPriority = 0;
+  nvic_init_structure.NVIC_IRQChannelPreemptionPriority = 1;
+  nvic_init_structure.NVIC_IRQChannelSubPriority = 2;
   nvic_init_structure.NVIC_IRQChannelCmd = ENABLE;
 
   for( i = 0; i < sizeof( uart_irq_table ) / sizeof( u8 ); i ++ )
@@ -410,7 +520,7 @@ void platform_int_init()
     NVIC_Init( &nvic_init_structure );
   }
 
-  // Enable all EXTI interrupts in the NVIC
+  /* Enable all EXTI interrupts in the NVIC */
   for( i = 0; i < sizeof( exti_irq_table ) / sizeof( u8 ); i ++ )
   {
     nvic_init_structure.NVIC_IRQChannel = exti_irq_table[ i ];
@@ -421,11 +531,116 @@ void platform_int_init()
   for( i = 0; i < sizeof( timer_irq_table ) / sizeof( u8 ); i ++ )
   {
     nvic_init_structure.NVIC_IRQChannel = timer_irq_table[ i ];
-      nvic_init_structure.NVIC_IRQChannelSubPriority = 1;
+      nvic_init_structure.NVIC_IRQChannelSubPriority = 3;
     NVIC_Init( &nvic_init_structure );
   }
 #endif
+
+  /* Initialize TIMER 14 for the handler loop */
+  platform_timer_set_clock( 11, 500000 ); //TIM14 = id 11
+  TIM_ITConfig(TIM14, TIM_IT_Update, ENABLE);
+  nvic_init_structure.NVIC_IRQChannelPreemptionPriority = 2;
+  nvic_init_structure.NVIC_IRQChannelSubPriority = 1;
+  nvic_init_structure.NVIC_IRQChannel = TIM8_TRG_COM_TIM14_IRQn;
+  NVIC_Init(&nvic_init_structure);
+
+  /* Initialize EXTI10, PB10, User button */
+  EXTI_InitTypeDef exti;
+  RCC_APB2PeriphClockCmd(RCC_APB2Periph_SYSCFG, ENABLE);
+  EXTI_DeInit();
+  SYSCFG_EXTILineConfig(EXTI_PortSourceGPIOB, EXTI_PinSource10);
+  EXTI_StructInit(&exti);
+  exti.EXTI_Line    = EXTI_Line10;
+  exti.EXTI_Trigger = EXTI_Trigger_Rising;
+  exti.EXTI_Mode    = EXTI_Mode_Interrupt;
+  exti.EXTI_LineCmd = ENABLE;
+  EXTI_Init(&exti);
+  EXTI_ClearFlag(EXTI_Line10);
+  EXTI_ClearITPendingBit(EXTI_Line10);
 }
+
+
+
+/* Interrupt routines for USB device */
+extern USB_OTG_CORE_HANDLE           USB_OTG_dev;
+extern uint32_t USBD_OTG_ISR_Handler (USB_OTG_CORE_HANDLE *pdev);
+
+#ifdef USB_OTG_HS_DEDICATED_EP1_ENABLED 
+extern uint32_t USBD_OTG_EP1IN_ISR_Handler (USB_OTG_CORE_HANDLE *pdev);
+extern uint32_t USBD_OTG_EP1OUT_ISR_Handler (USB_OTG_CORE_HANDLE *pdev);
+#endif
+
+/**
+  * @brief  This function handles EXTI15_10_IRQ Handler.
+  * @param  None
+  * @retval None
+  */
+#ifdef USE_USB_OTG_FS
+void OTG_FS_WKUP_IRQHandler(void)
+{
+  if(USB_OTG_dev.cfg.low_power)
+  {
+    *(uint32_t *)(0xE000ED10) &= 0xFFFFFFF9 ;
+    SystemInit();
+    USB_OTG_UngateClock(&USB_OTG_dev);
+  }
+  EXTI_ClearITPendingBit(EXTI_Line18);
+}
+#endif
+
+/**
+  * @brief  This function handles EXTI15_10_IRQ Handler.
+  * @param  None
+  * @retval None
+  */
+#ifdef USE_USB_OTG_HS
+void OTG_HS_WKUP_IRQHandler(void)
+{
+  if(USB_OTG_dev.cfg.low_power)
+  {
+    *(uint32_t *)(0xE000ED10) &= 0xFFFFFFF9 ;
+    SystemInit();
+    USB_OTG_UngateClock(&USB_OTG_dev);
+  }
+  EXTI_ClearITPendingBit(EXTI_Line20);
+}
+#endif
+
+/**
+  * @brief  This function handles OTG_HS Handler.
+  * @param  None
+  * @retval None
+  */
+#ifdef USE_USB_OTG_HS
+void OTG_HS_IRQHandler(void)
+#else
+void OTG_FS_IRQHandler(void)
+#endif
+{
+  USBD_OTG_ISR_Handler (&USB_OTG_dev);
+}
+
+#ifdef USB_OTG_HS_DEDICATED_EP1_ENABLED
+/**
+  * @brief  This function handles EP1_IN Handler.
+  * @param  None
+  * @retval None
+  */
+void OTG_HS_EP1_IN_IRQHandler(void)
+{
+  USBD_OTG_EP1IN_ISR_Handler (&USB_OTG_dev);
+}
+
+/**
+  * @brief  This function handles EP1_OUT Handler.
+  * @param  None
+  * @retval None
+  */
+void OTG_HS_EP1_OUT_IRQHandler(void)
+{
+  USBD_OTG_EP1OUT_ISR_Handler (&USB_OTG_dev);
+}
+#endif
 
 // ****************************************************************************
 // Interrupt table
@@ -436,5 +651,5 @@ const elua_int_descriptor elua_int_table[ INT_ELUA_LAST ] =
   { int_gpio_posedge_set_status, int_gpio_posedge_get_status, int_gpio_posedge_get_flag },
   { int_gpio_negedge_set_status, int_gpio_negedge_get_status, int_gpio_negedge_get_flag },
   { int_tmr_match_set_status, int_tmr_match_get_status, int_tmr_match_get_flag },
-  { int_uart_rx_set_status, int_uart_rx_get_status, int_uart_rx_get_flag }  
+  { int_uart_rx_set_status, int_uart_rx_get_status, int_uart_rx_get_flag },
 };

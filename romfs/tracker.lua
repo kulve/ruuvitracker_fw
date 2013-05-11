@@ -1,9 +1,10 @@
-require('http')
+require('config')
 require('logging')
 
 local JSON = require('json')
 
 module('tracker', package.seeall)
+
 local logger = Logger:new('tracker')
 --[[ event data structure
 event = {}
@@ -29,21 +30,21 @@ event.password = nil
 
 local function base_string(event)
    local sorted_keys = {}
-   for key in pairs(event) do 
-      table.insert(sorted_keys, key) 
+   for key in pairs(event) do
+      table.insert(sorted_keys, key)
    end
    table.sort(sorted_keys)
    local s = ""
-   for _, key in ipairs(sorted_keys) do 
+   for _, key in ipairs(sorted_keys) do
       local value = event[key]
       s = s .. key .. ':' .. value .. '|'
    end
    return s
 end
 
-local function generate_mac(event, shared_secret) 
+local function generate_mac(event, shared_secret)
    local base = base_string(event)
-   local mac = sha1.hmac(shared_secret, base)
+   local mac = ruuvi.sha1.hmac(shared_secret, base)
    return mac
 end
 
@@ -63,19 +64,19 @@ end
 
 function send_event(event)
    logger:info("Sending event")
-   local message = create_event_json(event, server.tracker_code, server.shared_secret)
+   local message = create_event_json(event, config.tracker.tracker_code, config.tracker.shared_secret)
    logger:debug(message)
-   return http.post(server.url .. 'events', message, 'application/json')
+   http.post(config.tracker.url .. 'events', message, 'application/json')
 end
 
 
 --[[--
 function ping_server()
-   local code, data = http.get(server.url .. 'ping')
-   if code ~= "200" then
+   local response = http.get(server.url .. 'ping')
+   if not response.is_success then
       return nil
    end
-   local success, response = pcall(function() return json.decode(data) end)
+   local success, response = pcall(function() return json.decode(response.content) end)
    if success then
       return response
    end
@@ -85,44 +86,50 @@ end
 
 --[[
 -- Unit tests, uncomment to enable
-function create_test_event() 
+function create_test_event()
    local event = {
-      heading="90",
-      time="2013-01-05T15:45:02.000Z",
-      speed=7.2227376,
-      latitude="6504.019739,N",
-      session_code="test",
-      longitude="02525.097090,E"
+      heading      = "90",
+      time         = "2013-01-05T15:45:02.000Z",
+      speed        = 7.2227376,
+      latitude     = "6504.019739,N",
+      session_code = "test",
+      longitude    = "02525.097090,E"
    }
    return event
 end
 --]]
 
 function tracker_handler()
-   local timer = timers.tracker_timer
-   local intervall = options.tracking_intervall * 1e6 -- to microseconds
-   tmr.setclock( timer, 2e3 ) -- 2kHz is known to work(on ruuviA), allow intervalls from 0s to 32s
-   local counter = tmr.start(timer) 
+   local timer = firmware.timers.tracker_timer
+   local intervall = config.tracker.tracking_intervall * 1e6 -- to microseconds
+   tmr.setclock(timer, 2e3) -- 2kHz is known to work (on ruuviA), allow intervalls from 0s to 32s
+   local counter = tmr.start(timer)
    
-   --wait for gps to start
-   while not gps.is_enabled() do
+   -- Wait for GPRS to start
+   while not gsm.flag_is_set(gsm.GPRS_READY) do
        coroutine.yield()
    end
+
+   -- Notify server that we are UP and Running.
    send_event({annotation = "Boot OK"})
-   --loop
+
+   -- Loop
    while true do
-      local delta = tmr.gettimediff(timer, counter, tmr.read(timer) )
-      if delta > intervall then -- time to send
+      local delta = tmr.gettimediff(timer, counter, tmr.read(timer))
+      -- TODO: get timestamp from GPS and check interval against that. Get rid of HW timer
+      if delta > intervall then -- Time to send
 	 logger:debug("Time to send")
-	 if gps.is_fixed then
-	    send_event(gps.event)
+	 if gps.has_fix() then
+	    local event={}
+	    event.latitude, event.longitude = gps.get_location();
+	    send_event(event)
 	 else
 	    logger:debug("no fix")
 	 end
-	 counter = tmr.start(timer) --clear, even when there is no fix, wait another intervall
+	 counter = tmr.start(timer) -- Clear; even when there is no fix, wait another intervall
       end
       coroutine.yield()
    end
 end
 --create co-routine
-handler = coroutine.create( tracker_handler )
+handler = coroutine.create(tracker_handler)

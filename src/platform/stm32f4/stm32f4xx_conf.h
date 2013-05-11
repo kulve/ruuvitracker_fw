@@ -1,7 +1,6 @@
 #ifndef __STM32F4xx_CONF_H
 #define __STM32F4xx_CONF_H
 
-
 /* Include all headers from STM library */
 #include "stm32f4xx_adc.h"
 #include "stm32f4xx_can.h"

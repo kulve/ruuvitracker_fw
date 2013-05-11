@@ -25,31 +25,17 @@
 #include "lua.h"
 #include "lauxlib.h"
 #include "lrotable.h"
+#include "gsm.h"
+#include "gps.h"
 
 // Platform specific includes
 #include "stm32f4xx_conf.h"
-
-// Clock data
-// IMPORTANT: if you change these, make sure to modify RCC_Configuration() too!
-/* PLL_VCO = (HSE_VALUE or HSI_VALUE / PLL_M) * PLL_N */
-#define PLL_M      12
-#define PLL_N      336
-
-/* SYSCLK = PLL_VCO / PLL_P */
-#define PLL_P      2
-
-/* USB OTG FS, SDIO and RNG Clock =  PLL_VCO / PLLQ */
-#define PLL_Q      7
-
-#define HCLK        ( (HSE_VALUE / PLL_M) * PLL_N / PLL_P)
-#define PCLK1_DIV   4
-#define PCLK2_DIV   2
 
 // SysTick Config Data
 // NOTE: when using virtual timers, SYSTICKHZ and VTMR_FREQ_HZ should have the
 // same value, as they're served by the same timer (the systick)
 // Max SysTick preload value is 16777215, for STM32F103RET6 @ 72 MHz, lowest acceptable rate would be about 5 Hz
-#define SYSTICKHZ               16
+#define SYSTICKHZ               1000
 #define SYSTICKMS               (1000 / SYSTICKHZ)
 
 #if ( (HCLK / SYSTICKHZ)  > SysTick_LOAD_RELOAD_Msk)
@@ -64,7 +50,6 @@ static void NVIC_Configuration(void);
 
 static void timers_init();
 static void pwms_init();
-extern void uarts_init();
 static void spis_init();
 static void pios_init();
 #ifdef BUILD_ADC
@@ -73,11 +58,13 @@ static void adcs_init();
 #if (NUM_CAN > 0)
 static void cans_init();
 #endif
+extern void usb_init();
+extern void uarts_init();
+static void i2cs_init();
 
 
 int platform_init()
 {
-
   // Setup IRQ's
   NVIC_Configuration();
 
@@ -101,9 +88,21 @@ int platform_init()
   adcs_init();
 #endif
 
+#if (NUM_I2C > 0)
+  i2cs_init();
+#endif
+
 #if (NUM_CAN > 0)
   // Setup CANs
   cans_init();
+#endif
+
+#ifdef BUILD_GSM
+  gsm_setup_io();
+#endif
+
+#ifdef BUILD_GPS
+  gps_setup_io();
 #endif
 
   // Setup system timer
@@ -118,9 +117,20 @@ int platform_init()
   }
 
   cmn_platform_init();
+  
+  usb_init();
 
   // All done
   return PLATFORM_OK;
+}
+
+#define SPEED_100K  100000
+#define SPEED_400K  400000
+static void i2cs_init()
+{
+  int i;
+  for (i=0;i<NUM_I2C;i++)
+    platform_i2c_setup(i, SPEED_400K);
 }
 
 // ****************************************************************************
@@ -150,21 +160,18 @@ static void NVIC_Configuration(void)
 #endif
 
   /* Configure the NVIC Preemption Priority Bits */
-  /* Priority group 0 disables interrupt nesting completely */
-  NVIC_PriorityGroupConfig(NVIC_PriorityGroup_0);
+  NVIC_PriorityGroupConfig(NVIC_PriorityGroup_4);
 
-  // Lower the priority of the SysTick interrupt to let the
-  // UART interrupt preempt it
   nvic_init_structure.NVIC_IRQChannel = SysTick_IRQn;
   nvic_init_structure.NVIC_IRQChannelPreemptionPriority = 0;
-  nvic_init_structure.NVIC_IRQChannelSubPriority = 1;
+  nvic_init_structure.NVIC_IRQChannelSubPriority = 0;
   nvic_init_structure.NVIC_IRQChannelCmd = ENABLE;
   NVIC_Init(&nvic_init_structure);
 
 #ifdef BUILD_ADC
   nvic_init_structure_adc.NVIC_IRQChannel = DMA2_Stream0_IRQn;
-  nvic_init_structure_adc.NVIC_IRQChannelPreemptionPriority = 0;
-  nvic_init_structure_adc.NVIC_IRQChannelSubPriority = 2;
+  nvic_init_structure_adc.NVIC_IRQChannelPreemptionPriority = 1;
+  nvic_init_structure_adc.NVIC_IRQChannelSubPriority = 1;
   nvic_init_structure_adc.NVIC_IRQChannelCmd = DISABLE;
   NVIC_Init(&nvic_init_structure_adc);
 #endif
@@ -192,6 +199,12 @@ static void pios_init()
 
     // Default all port pins to input and enable port.
     GPIO_StructInit(&GPIO_InitStructure);
+#if defined(ENABLE_JTAG_SWD)
+    //Except JTAG pins
+    if (port==0) {
+      GPIO_InitStructure.GPIO_Pin = ~(GPIO_Pin_13 | GPIO_Pin_14 | GPIO_Pin_15);
+    }
+#endif
     GPIO_Init(pio_port[port], &GPIO_InitStructure);
   }
 
@@ -267,8 +280,25 @@ pio_type platform_pio_op( unsigned port, pio_type pinmask, int op )
       GPIO_InitStructure.GPIO_Pin   = pinmask;
       GPIO_InitStructure.GPIO_Mode  = GPIO_Mode_OUT;
       GPIO_InitStructure.GPIO_Speed = GPIO_Speed_50MHz;
-
+      
+      /* BUGFIX: RuuviTracker Rev B1 board may BURN GSM module, if PWR_KEY(PE2) is driven to 3.3V */
+      /* Force PE2 to be Open-Drain */
+#if defined( ELUA_BOARD_RUUVIB1 )
+      if ((base == GPIOE) && (pinmask&GPIO_Pin_2)) {
+	GPIO_InitStructure.GPIO_OType = GPIO_OType_OD;
+	GPIO_InitStructure.GPIO_Pin = GPIO_Pin_2;
+	GPIO_Init(base, &GPIO_InitStructure);
+	if (pinmask!=GPIO_Pin_2) { // Configure other pins to normal output
+	  GPIO_InitStructure.GPIO_Pin = pinmask&~GPIO_Pin_2;
+	  GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
+	  GPIO_Init(base, &GPIO_InitStructure);
+	}
+      } else {
+	GPIO_Init(base, &GPIO_InitStructure);
+      }
+#else
       GPIO_Init(base, &GPIO_InitStructure);
+#endif
       break;
 
     case PLATFORM_IO_PORT_GET_VALUE:
@@ -424,11 +454,12 @@ const TIM_TypeDef * const timer[] = {
   TIM13,  // ID: 10
   TIM14   // ID: 11
 };
-#define TIM_GET_PRESCALE( id ) ( (((id) == 0) || ((id) == 5)|| ((id) == 6)|| ((id) == 7)|| ((id) == 8)) ? ( PCLK2_DIV ) : ( PCLK1_DIV ) )
-#define TIM_GET_BASE_CLK( id ) ( HCLK / ( TIM_GET_PRESCALE( id ) / 2 ) )
+#define TIM_GET_BASE_CLK( id ) ( HCLK  )
 #define TIM_STARTUP_CLOCK       50000
 
-static u32 platform_timer_set_clock( unsigned id, u32 clock );
+u32 platform_timer_set_clock( unsigned id, u32 clock );
+
+volatile unsigned int systick=0;
 
 void SysTick_Handler( void )
 {
@@ -437,6 +468,30 @@ void SysTick_Handler( void )
 
   // Handle system timer call
   cmn_systimer_periodic();
+
+  //Allow main loop to run by disabling Sleeponexit bit
+  NVIC_SystemLPConfig(NVIC_LP_SLEEPONEXIT, DISABLE);
+
+  systick++;
+}
+
+/**
+ * Delay funtion.
+ * Actual resolution depends on Systick resolution.
+ * @param ms number of milliseconds to sleep.
+ */
+void delay_ms(unsigned int ms)
+{
+  ms *= SYSTICKMS;
+  ms += systick;
+  while (ms < systick) {                              /* In case of overflow */
+    NVIC_SystemLPConfig(NVIC_LP_SLEEPONEXIT, ENABLE); //Enable SleepOnExit mode for interrupt
+    __WFI(); //Go to sleep (WaitForInterrupt)
+  }
+  while (ms > systick) {
+    NVIC_SystemLPConfig(NVIC_LP_SLEEPONEXIT, ENABLE); //Enable SleepOnExit mode for interrupt
+    __WFI(); //Go to sleep (WaitForInterrupt)
+  }
 }
 
 static void timers_init()
@@ -470,10 +525,13 @@ static u32 platform_timer_get_clock( unsigned id )
   return TIM_GET_BASE_CLK( id ) / ( TIM_GetPrescaler( ptimer ) + 1 );
 }
 
-static u32 platform_timer_set_clock( unsigned id, u32 clock )
+u32 platform_timer_set_clock( unsigned id, u32 clock )
 {
   TIM_TimeBaseInitTypeDef timer_base_struct;
   TIM_TypeDef *ptimer = (TIM_TypeDef*)timer[ id ];
+
+  TIM_DeInit(ptimer);
+
   u32 pre = ( TIM_GET_BASE_CLK( id ) / clock ) - 1;
 
   if( pre > 65535 ) // Limit prescaler to 16-bits
@@ -856,8 +914,7 @@ static const u8 pwm_gpio_pins_source[] = { GPIO_PinSource12, GPIO_PinSource13, G
 
 static void pwms_init()
 {
-//  RCC_APB2PeriphClockCmd( RCC_APB1Periph_TIM4, ENABLE );
-  //
+  //RCC_APB2PeriphClockCmd( RCC_APB1Periph_TIM4, ENABLE );
 }
 
 // Return the PWM clock

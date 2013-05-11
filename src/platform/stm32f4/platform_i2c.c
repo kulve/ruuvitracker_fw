@@ -15,10 +15,18 @@ static const u8 i2c_af[] = {GPIO_AF_I2C1, GPIO_AF_I2C2, GPIO_AF_I2C3};
  static const u16 i2c_scl_pin[] = {GPIO_Pin_6, 0, 0};
  static const u8 i2c_sda_pinsource[] = {GPIO_PinSource7, 0, 0};
  static const u8 i2c_scl_pinsource[] = {GPIO_PinSource6, 0, 0};
+#elif defined( ELUA_BOARD_RUUVIB1 )
+ static const u32 i2c_port_rcc[] = {RCC_AHB1Periph_GPIOB, 0, 0};
+ static GPIO_TypeDef *const i2c_port[] = {GPIOB, NULL, NULL};
+ static const u16 i2c_sda_pin[] = {GPIO_Pin_9, 0, 0};
+ static const u16 i2c_scl_pin[] = {GPIO_Pin_8, 0, 0};
+ static const u8 i2c_sda_pinsource[] = {GPIO_PinSource9, 0, 0};
+ static const u8 i2c_scl_pinsource[] = {GPIO_PinSource8, 0, 0};
 #else
 #error "Define I2C pins/ports for this board in platform_i2c.c"
 #endif
 
+#define TIMEOUT 4096
 
 /* I2C Functions */
 u32 platform_i2c_setup( unsigned id, u32 speed )
@@ -68,15 +76,16 @@ u32 platform_i2c_setup( unsigned id, u32 speed )
 
 void platform_i2c_send_start( unsigned id )
 {
+	int timeout = TIMEOUT;
 	// wait until I2C1 is not busy anymore
-	while(I2C_GetFlagStatus(i2c[id], I2C_FLAG_BUSY));
-  
+	while(I2C_GetFlagStatus(i2c[id], I2C_FLAG_BUSY)) {
+		if (timeout-- == 0) {
+			return;
+		}
+	}
+
 	// Send I2C1 START condition 
 	I2C_GenerateSTART(i2c[id], ENABLE);
-	  
-	// wait for I2C1 EV5 --> Master has acknowledged start condition
-	while(SUCCESS != I2C_CheckEvent(i2c[id], I2C_EVENT_MASTER_MODE_SELECT))
-		;;
 }
 
 void platform_i2c_send_stop( unsigned id )
@@ -89,7 +98,17 @@ void platform_i2c_send_stop( unsigned id )
 /* Adds R/W bit to end of address.(Should not be included in address) */
 int platform_i2c_send_address( unsigned id, u16 address, int direction )
 {
+	int timeout = TIMEOUT;
+	// wait for I2C1 EV5 --> Master has acknowledged start condition
+	while(SUCCESS != I2C_CheckEvent(i2c[id], I2C_EVENT_MASTER_MODE_SELECT)) {
+		if (timeout-- == 0) {
+			return 0;
+		}
+	}
+
 	address<<=1; //Shift 7bit address to left by one to leave room for R/W bit
+	timeout = TIMEOUT;
+
 	/* wait for I2C1 EV6, check if 
 	 * either Slave has acknowledged Master transmitter or
 	 * Master receiver mode, depending on the transmission
@@ -97,13 +116,19 @@ int platform_i2c_send_address( unsigned id, u16 address, int direction )
 	 */ 
 	if(direction == PLATFORM_I2C_DIRECTION_TRANSMITTER){
 		I2C_Send7bitAddress(i2c[id], address, I2C_Direction_Transmitter);
-		while(SUCCESS != I2C_CheckEvent(i2c[id], I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED))
-			;;
+		while(SUCCESS != I2C_CheckEvent(i2c[id], I2C_EVENT_MASTER_TRANSMITTER_MODE_SELECTED)) {
+			if (timeout-- == 0) {
+				return 0;
+			}
+		}
 	}
 	else if(direction == PLATFORM_I2C_DIRECTION_RECEIVER){
 		I2C_Send7bitAddress(i2c[id], address, I2C_Direction_Receiver);
-		while(SUCCESS != I2C_CheckEvent(i2c[id], I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED))
-			;;
+		while(SUCCESS != I2C_CheckEvent(i2c[id], I2C_EVENT_MASTER_RECEIVER_MODE_SELECTED)) {
+			if (timeout-- == 0) {
+				return 0;
+			}
+		}
 	}
 	return 1;
 }

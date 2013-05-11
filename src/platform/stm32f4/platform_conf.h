@@ -22,7 +22,7 @@
 //#define BUILD_DHCPC
 //#define BUILD_DNS
 #define BUILD_CON_GENERIC
-#define BUILD_ADC
+//#define BUILD_ADC
 //#define BUILD_RPC
 //#define BUILD_RFS
 //#define BUILD_CON_TCP
@@ -30,13 +30,15 @@
 #define BUILD_C_INT_HANDLERS
 #define BUILD_LUA_INT_HANDLERS
 //#define ENABLE_ENC
+#define BUILD_GSM
+#define BUILD_GPS
 
 #define MMCFS_SDIO_STM32
 
 #define PLATFORM_HAS_SYSTIMER
 
 //#define ENABLE_TRACE       // Enable the ETM TRACE interface (TRACECLK, TRACE D0-3)
-//#define ENABLE_JTAG_SWD    // Do NOT remove this unless you really not need JTAG/SWD
+#define ENABLE_JTAG_SWD    // Do NOT remove this unless you really not need JTAG/SWD
 
 // *****************************************************************************
 // UART/Timer IDs configuration data (used in main.c)
@@ -50,8 +52,8 @@
 // Auxiliary libraries that will be compiled for this platform
 
 // Number of resources (0 if not available/not implemented)
-#define NUM_PIO               3
-#define NUM_SPI               0
+#define NUM_PIO               5
+#define NUM_SPI               1
 #define NUM_UART              3
 #define NUM_TIMER             12
 #define NUM_PHYS_TIMER        12
@@ -95,8 +97,22 @@
 #define PLATLINE
 #endif
 
-/* SHA1 Lib */
-extern int luaopen_sha1( lua_State *L );
+#ifdef BUILD_GSM
+extern int luaopen_gsm( lua_State *L );
+#define GSMLINE _ROM( "gsm", luaopen_gsm, gsm_map ) _ROM("http", luaopen_gsm, http_map)
+#else
+#define GSMLINE
+#endif
+
+#ifdef BUILD_GPS
+extern int luaopen_gps( lua_State *L );
+#define GPSLINE _ROM( "gps", luaopen_gps, gps_map )
+#else
+#define GPSLINE
+#endif
+
+/* Ruuvi-Lib */
+extern int luaopen_ruuvi( lua_State *L );
 
 #define LUA_PLATFORM_LIBS_ROM\
   _ROM( AUXLIB_PIO, luaopen_pio, pio_map )\
@@ -117,7 +133,9 @@ extern int luaopen_sha1( lua_State *L );
   LCDLINE\
   _ROM( AUXLIB_ELUA, luaopen_elua, elua_map )\
   _ROM( LUA_MATHLIBNAME, luaopen_math, math_map )\
-  _ROM( "stm32", luaopen_platform, platform_map )
+  _ROM( "ruuvi", luaopen_ruuvi, ruuvi_map ) \
+  GSMLINE \
+  GPSLINE \
   PLATLINE
 
 // *****************************************************************************
@@ -129,6 +147,9 @@ extern int luaopen_sha1( lua_State *L );
 #define VTMR_NUM_TIMERS       4
 #define VTMR_FREQ_HZ          10
 
+// GSM+GPS serial ports
+#define GSM_UART_ID           1
+#define GPS_UART_ID           2
 
 // Enable RX buffering on UART
 //#define BUF_ENABLE_UART
