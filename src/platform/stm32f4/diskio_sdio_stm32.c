@@ -62,15 +62,17 @@ DSTATUS disk_initialize (
 	BYTE drv		/* Physical drive number (0) */
 )
 {
-    if (drv!=0)
-	return STA_NOINIT;
+  int err;
+  if (drv!=0)
+    return STA_NOINIT;
     
   if( drv == 0 )
   {
     if( ( Stat & STA_NOINIT ) == 0 )
       return 0;
     printf("disk_initialize()\n");
-    SD_Init();
+    err = SD_Init();
+    printf("SD_Init returned %d\n", err);
     //SD_InitializeCards();
     //SD_GetCardInfo(&SDCardInfo2);
     //SD_SelectDeselect((uint32_t) (SDCardInfo2.RCA << 16));
@@ -126,6 +128,7 @@ DRESULT disk_read (
     if( drv == 0 )
     {
       if( (ret=SD_ReadBlock(buff, sector * 512, 512)) != SD_OK ) {
+	printf("disk_read(): failed. err=%d\n", ret);
         return ret;
       }
     }
@@ -133,6 +136,7 @@ DRESULT disk_read (
     count --;
     buff += 512;
   }
+  printf("disk_read: OK\n");
   return RES_OK;
 }
 

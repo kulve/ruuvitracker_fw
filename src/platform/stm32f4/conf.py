@@ -46,7 +46,7 @@ comp.Append(CPPPATH = [STDPeriphdir+"/inc" , CMSISdir+"/Include", CMSISdir+"/Dev
 
 # Files to compile from ST's libraries
 STD_files = "stm32f4xx_adc.c stm32f4xx_dac.c stm32f4xx_dma.c stm32f4xx_exti.c stm32f4xx_gpio.c stm32f4xx_i2c.c stm32f4xx_rcc.c " \
-    + "stm32f4xx_usart.c stm32f4xx_spi.c stm32f4xx_tim.c misc.c stm32f4xx_syscfg.c"
+    + "stm32f4xx_usart.c stm32f4xx_spi.c stm32f4xx_tim.c misc.c stm32f4xx_syscfg.c stm32f4xx_sdio.c"
 USBotg_files = "usb_dcd.c usb_dcd_int.c usb_core.c"
 USBcore_files = "usbd_req.c usbd_core.c usbd_ioreq.c"
 USBclass_files =USBdev+"/Class/cdc/src/usbd_cdc_core.c"
@@ -61,7 +61,7 @@ fwlib_files = " ".join( [ STDPeriphdir+"/src/%s" % ( f ) for f in STD_files.spli
 # Files to compile from this folder
 specific_files = "platform.c platform_int.c uart.c platform_i2c.c platform_sha1.c sha1.c" \
     +" usb_bsp.c usbd_desc.c usbd_usr.c usbd_cdc_vcp.c stm32_usb.c ringbuff.c" \
-    +" lua_ruuvi.c gsm.c gps.c slre.c sdcard.c"
+    +" lua_ruuvi.c gsm.c gps.c slre.c sdcard.c diskio_sdio_stm32.c"
 
 ldscript = "stm32.ld"
 

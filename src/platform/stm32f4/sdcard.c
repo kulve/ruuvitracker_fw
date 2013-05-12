@@ -1222,11 +1222,13 @@ SD_Error SD_ReadBlock(uint8_t *readbuff, uint32_t ReadAddr, uint16_t BlockSize)
   
   SDIO_DataInitStructure.SDIO_DataTimeOut = SD_DATATIMEOUT;
   SDIO_DataInitStructure.SDIO_DataLength = BlockSize;
-  SDIO_DataInitStructure.SDIO_DataBlockSize = (uint32_t) 9 << 4;
+  SDIO_DataInitStructure.SDIO_DataBlockSize = SDIO_DataBlockSize_512b;
   SDIO_DataInitStructure.SDIO_TransferDir = SDIO_TransferDir_ToSDIO;
   SDIO_DataInitStructure.SDIO_TransferMode = SDIO_TransferMode_Block;
   SDIO_DataInitStructure.SDIO_DPSM = SDIO_DPSM_Enable;
   SDIO_DataConfig(&SDIO_DataInitStructure);
+
+  SDIO_ClearFlag(SDIO_STATIC_FLAGS);
 
   /*!< Send CMD17 READ_SINGLE_BLOCK */
   SDIO_CmdInitStructure.SDIO_Argument = (uint32_t)ReadAddr;
@@ -1237,6 +1239,7 @@ SD_Error SD_ReadBlock(uint8_t *readbuff, uint32_t ReadAddr, uint16_t BlockSize)
   SDIO_SendCommand(&SDIO_CmdInitStructure);
 
   errorstatus = CmdResp1Error(SD_CMD_READ_SINGLE_BLOCK);
+  printf("CMD17 returned %d, block=%d\n", errorstatus, BlockSize);
 
   if (errorstatus != SD_OK)
   {
@@ -1274,6 +1277,7 @@ SD_Error SD_ReadBlock(uint8_t *readbuff, uint32_t ReadAddr, uint16_t BlockSize)
   {
     SDIO_ClearFlag(SDIO_FLAG_RXOVERR);
     errorstatus = SD_RX_OVERRUN;
+    printf("SD_ReadBlock(): SD_RX_OVERRUN: count=%d\n",count);
     return(errorstatus);
   }
   else if (SDIO_GetFlagStatus(SDIO_FLAG_STBITERR) != RESET)
