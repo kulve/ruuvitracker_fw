@@ -33,6 +33,11 @@
 #include "usbd_cdc_core.h"
 #include "usbd_conf.h"
 
+/* RuuviTracker Virtual COM PORT mapping */
+extern int VCP_map_UART_id;
+extern int VCP_map_UART_dir;
+
+void VCP_map_set_UART_id(int id, int direction);
 
 /* Exported typedef ------------------------------------------------------------*/
 /* The following structures groups all needed parameters to be configured for the 

@@ -170,7 +170,7 @@ void platform_s_uart_send( unsigned id, u8 data )
   {
   }
   USART_SendData(stm32_usart[id], data);
-  if (id == 0) {
+  if ((id == VCP_map_UART_id) && (VCP_map_UART_dir==VCP_DIR_IN)) {
     VCP_SendChar(data);
   }
 }
@@ -212,6 +212,9 @@ void all_usart_irqhandler( int id )
     elua_add_c_hook(gps_line_received);
   }
 #endif
+  if ((id == VCP_map_UART_id) && (VCP_map_UART_dir==VCP_DIR_OUT)) {
+    VCP_SendChar(c);
+  }
 }
 
 

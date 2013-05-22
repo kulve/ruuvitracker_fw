@@ -30,6 +30,8 @@
 /* Includes ------------------------------------------------------------------*/
 #include "usbd_cdc_vcp.h"
 #include "usb_conf.h"
+#include "platform_conf.h"
+#include "platform.h"
 
 #include <string.h> /* for strlen */
 
@@ -60,6 +62,10 @@ extern uint32_t APP_Rx_ptr_out;	 /* CDC driver's internal pointer, used to detec
 __IO uint8_t From_Host_Buffer[FROM_HOST_MAX]; /* data received from host gets stored in this buffer */
 __IO uint32_t From_Host_Idx_Write, From_Host_Idx_Read;
 
+
+/* Ruuvitracker VCP mapping */
+int VCP_map_UART_id = VCP_UART_DEFAULT_ID;
+int VCP_map_UART_dir = VCP_UART_DEFAULT_DIRECTION;
 
 /* Private function prototypes -----------------------------------------------*/
 static uint16_t VCP_Init     (void);
@@ -270,15 +276,20 @@ uint32_t VCP_HasReceived(void)
   * @param  Len: Number of data received (in bytes)
   * @retval Result of the operation: USBD_OK
   */
-extern void usart_received(int id, u8 c);
 uint16_t VCP_DataRx(uint8_t* Buf, uint32_t Len)
 {
 	// n.b. this function is called from the ISR
 	uint32_t i;
 
+
 	for (i = 0; i < Len; i++) {
-	  /* Pipe received data to UART0 buffer (TODO: do not hardcode this)*/
-	  usart_received(0, Buf[i]);
+	     if (VCP_map_UART_dir == VCP_DIR_IN) {
+		  /* Pipe received data to UART buffer */
+		  usart_received(VCP_map_UART_id, Buf[i]);
+	     } else {
+		  /* Send data out from uart */
+		  platform_s_uart_send(VCP_map_UART_id, Buf[i]);
+	     }
 	}
 
 	return USBD_OK;
@@ -304,6 +315,13 @@ uint8_t VCP_GetReceived(void)
 		retval = 0;
 	}
 	return retval;
+}
+
+/* Change UART ID of VCP */
+void VCP_map_set_UART_id(int id, int direction)
+{
+     VCP_map_UART_id = id;
+     VCP_map_UART_dir = direction;
 }
 
 /************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/

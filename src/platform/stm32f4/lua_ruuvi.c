@@ -18,6 +18,7 @@
 #include "stm32f4xx.h"
 #include <delay.h>
 #include "dlmalloc.h"
+#include "usbd_cdc_vcp.h"
 
 
 /* C-interface for Ruuvitracker codes in Lua */
@@ -50,6 +51,15 @@ static int idleloop( lua_State *L) {
     while(tick == systick_get_raw())
       __WFI(); //Go to sleep (WaitForInterrupt)
   }
+  return 0;
+}
+
+/* Map USB Virtual com port to different physical UART */
+static int vcp_change(lua_State *L)
+{
+  int id = luaL_checkinteger(L, 1);
+  int direction = luaL_checkinteger(L, 2);
+  VCP_map_set_UART_id(id, direction);
   return 0;
 }
 
@@ -94,6 +104,7 @@ const LUA_REG_TYPE ruuvi_map[] =
   { LSTRKEY("idleloop"),       LFUNCVAL(idleloop) },
   { LSTRKEY("delay_ms"),       LFUNCVAL(l_delay_ms) },
   { LSTRKEY( "malloc_stats" ), LFUNCVAL(print_mem) },
+  { LSTRKEY( "set_vcp_uart" ), LFUNCVAL(vcp_change) },
   /* SHA1 table ruuvi.sha1 */
   { LSTRKEY( "sha1" ),         LROVAL( sha1_map ) },
 #endif

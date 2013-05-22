@@ -149,6 +149,12 @@ extern int luaopen_ruuvi( lua_State *L );
 #define GSM_UART_ID           1
 #define GPS_UART_ID           2
 
+//Default UART to map USB Virtual COM Port
+#define VCP_DIR_IN 0
+#define VCP_DIR_OUT 1
+#define VCP_UART_DEFAULT_ID   CON_UART_ID
+#define VCP_UART_DEFAULT_DIRECTION VCP_DIR_IN
+
 // Enable RX buffering on UART
 //#define BUF_ENABLE_UART
 //#define CON_BUF_SIZE          BUF_SIZE_128
