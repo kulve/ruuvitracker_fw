@@ -454,12 +454,12 @@ SD_Error SD_Init(void)
     /*----------------- Select Card --------------------------------*/
     errorstatus = SD_SelectDeselect((uint32_t) (SDCardInfo.RCA << 16));
   }
-
+/* Disable 4bit mode, for now
   if (errorstatus == SD_OK)
   {
     errorstatus = SD_EnableWideBusOperation(SDIO_BusWide_4b);
   }  
-
+*/
   return(errorstatus);
 }
 
@@ -2867,7 +2867,7 @@ void SD_LowLevel_Init(void)
   GPIO_InitStructure.GPIO_Speed = GPIO_Speed_25MHz;
   GPIO_InitStructure.GPIO_Mode = GPIO_Mode_AF;
   GPIO_InitStructure.GPIO_OType = GPIO_OType_PP;
-  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_UP;
+  GPIO_InitStructure.GPIO_PuPd = GPIO_PuPd_NOPULL;
   GPIO_Init(GPIOC, &GPIO_InitStructure);
 
   /* Configure PD.02 CMD line */
