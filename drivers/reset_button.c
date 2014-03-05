@@ -55,13 +55,26 @@ static void extcb1(EXTDriver *extp, expchannel_t channel) {
 }
 
 /*
+ * Turn LED2 on and off with the accelerometer int2
+ */
+static void extcb_acc_int2(EXTDriver *extp, expchannel_t channel) {
+    (void)extp;
+    (void)channel;
+
+    if (PAL_LOW == palReadPad(GPIOA, GPIOA_ACC_INT2))
+	  palClearPad(GPIOB, GPIOB_LED2);
+	else
+	  palSetPad(GPIOB, GPIOB_LED2);
+}
+
+/*
  * EXT configuration table
  * We need only PA0
  */
 static const EXTConfig extcfg = {
     {
         {EXT_CH_MODE_RISING_EDGE | EXT_CH_MODE_AUTOSTART | EXT_MODE_GPIOA, extcb1},
-        {EXT_CH_MODE_DISABLED, NULL},
+        {EXT_CH_MODE_BOTH_EDGES | EXT_CH_MODE_AUTOSTART | EXT_MODE_GPIOA, extcb_acc_int2},
         {EXT_CH_MODE_DISABLED, NULL},
         {EXT_CH_MODE_DISABLED, NULL},
         {EXT_CH_MODE_DISABLED, NULL},
