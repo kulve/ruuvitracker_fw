@@ -303,16 +303,30 @@ static WORKING_AREA(waThread1, 128);
 __attribute__((noreturn))
 static void Thread1(void *arg)
 {
+    uint8_t i = 0;
+
     (void)arg;
+
     chRegSetThreadName("blinker");
     while (TRUE) {
-        systime_t time;
 
-        time = SDU.config->usbp->state == USB_ACTIVE ? 250 : 500;
-        palClearPad(GPIOB, GPIOB_LED1);
-        chThdSleepMilliseconds(time);
-        palSetPad(GPIOB, GPIOB_LED1);
-        chThdSleepMilliseconds(time);
+        // Check for movement every 100ms and blink slowly if no movement
+        if (PAL_HIGH == palReadPad(GPIOA, GPIOA_ACC_INT2)) {
+            chThdSleepMilliseconds(100);
+            if (++i >= 10) {
+                i = 0;
+                palTogglePad(GPIOB, GPIOB_LED1);
+            }
+            continue;
+        }
+
+        // If movement detected, blink quickly for 1sec, then reset movement
+        for (i = 0; i < 10; ++i) {
+            palTogglePad(GPIOB, GPIOB_LED1);
+            chThdSleepMilliseconds(100);
+        }
+        i = 0;
+        acc_mt_restart();
     }
 }
 
@@ -345,6 +359,11 @@ int main(void)
     button_init();
      */
     extStart(&EXTD1, &extcfg);
+
+    /*
+     * Enable motion detection using interrupt pin 2
+     */
+    acc_mt_enable(2);
 
     /*
      * Shell manager initialization.
